@@ -35,9 +35,7 @@ from .auth import (
     asyncio_complete_auth_flow,
     complete_auth_flow_from_callback_url,
     create_auth_url,
-    generate_auth_token,
     get_auth_status,
-    verify_auth_token,
     verify_password,
 )
 from .credential_manager import CredentialManager
@@ -192,10 +190,13 @@ class ConfigSaveRequest(BaseModel):
     config: dict
 
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """验证认证令牌"""
-    if not verify_auth_token(credentials.credentials):
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """验证控制面板密码（直接验证，不使用token）"""
+    from config import get_panel_password
+
+    password = await get_panel_password()
+    if credentials.credentials != password:
+        raise HTTPException(status_code=401, detail="密码错误")
     return credentials.credentials
 
 
@@ -255,11 +256,11 @@ async def serve_control_panel(request: Request):
 
 @router.post("/auth/login")
 async def login(request: LoginRequest):
-    """用户登录"""
+    """用户登录（简化版：直接返回密码作为token）"""
     try:
         if await verify_password(request.password):
-            token = generate_auth_token()
-            return JSONResponse(content={"token": token, "message": "登录成功"})
+            # 直接使用密码作为token，简化认证流程
+            return JSONResponse(content={"token": request.password, "message": "登录成功"})
         else:
             raise HTTPException(status_code=401, detail="密码错误")
     except HTTPException:
@@ -422,21 +423,6 @@ async def check_auth_status(project_id: str, token: str = Depends(verify_token))
 # =============================================================================
 # 工具函数 (Helper Functions)
 # =============================================================================
-
-
-def calculate_cooldown_status(cooldown_until: Optional[float]) -> tuple:
-    """计算冷却状态
-
-    Returns:
-        (cooldown_status, cooldown_remaining_seconds)
-    """
-    if not cooldown_until:
-        return "ready", 0
-
-    current_time = time.time()
-    if current_time < cooldown_until:
-        return "cooling", int(cooldown_until - current_time)
-    return "ready", 0
 
 
 def get_env_locked_keys() -> set:
@@ -656,8 +642,8 @@ async def get_creds_status_common(
     # 验证分页参数
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset 必须大于等于 0")
-    if limit not in [20, 50, 100]:
-        raise HTTPException(status_code=400, detail="limit 只能是 20、50 或 100")
+    if limit not in [20, 50, 100, 200, 500, 1000]:
+        raise HTTPException(status_code=400, detail="limit 只能是 20、50、100、200、500 或 1000")
     if status_filter not in ["all", "enabled", "disabled"]:
         raise HTTPException(status_code=400, detail="status_filter 只能是 all、enabled 或 disabled")
 
@@ -678,24 +664,15 @@ async def get_creds_status_common(
 
         creds_list = []
         for summary in result["items"]:
-            cooldown_status, cooldown_remaining_seconds = calculate_cooldown_status(
-                summary.get("cooldown_until")
-            )
-
             cred_info = {
                 "filename": os.path.basename(summary["filename"]),
                 "user_email": summary["user_email"],
                 "disabled": summary["disabled"],
                 "error_codes": summary["error_codes"],
                 "last_success": summary["last_success"],
-                "cooldown_status": cooldown_status,
-                "cooldown_remaining_seconds": cooldown_remaining_seconds,
                 "backend_type": backend_type,
                 "model_cooldowns": summary.get("model_cooldowns", {}),
             }
-
-            if summary.get("cooldown_until"):
-                cred_info["cooldown_until"] = summary["cooldown_until"]
 
             creds_list.append(cred_info)
 
@@ -736,24 +713,15 @@ async def get_creds_status_common(
             "user_email": None,
         })
 
-        cooldown_status, cooldown_remaining_seconds = calculate_cooldown_status(
-            file_status.get("cooldown_until")
-        )
-
         cred_info = {
             "filename": os.path.basename(filename),
             "user_email": file_status.get("user_email"),
             "disabled": file_status.get("disabled", False),
             "error_codes": file_status.get("error_codes", []),
             "last_success": file_status.get("last_success", time.time()),
-            "cooldown_status": cooldown_status,
-            "cooldown_remaining_seconds": cooldown_remaining_seconds,
             "backend_type": backend_type,
             "model_cooldowns": file_status.get("model_cooldowns", {}),
         }
-
-        if file_status.get("cooldown_until"):
-            cred_info["cooldown_until"] = file_status["cooldown_until"]
 
         creds_list.append(cred_info)
 
@@ -918,7 +886,7 @@ async def get_creds_status(
 
     Args:
         offset: 跳过的记录数（默认0）
-        limit: 每页返回的记录数（默认50，可选：20, 50, 100）
+        limit: 每页返回的记录数（默认50，可选：20, 50, 100, 200, 500, 1000）
         status_filter: 状态筛选（all=全部, enabled=仅启用, disabled=仅禁用）
 
     Returns:
@@ -965,29 +933,14 @@ async def get_cred_detail(filename: str, token: str = Depends(verify_token)):
                 "user_email": None,
             }
 
-        # 计算冷却状态
-        cooldown_until = file_status.get("cooldown_until")
-        cooldown_status = "ready"
-        cooldown_remaining_seconds = 0
-
-        if cooldown_until:
-            current_time = time.time()
-            if current_time < cooldown_until:
-                cooldown_status = "cooling"
-                cooldown_remaining_seconds = int(cooldown_until - current_time)
-
         result = {
             "status": file_status,
             "content": credential_data,
             "filename": os.path.basename(filename),
             "backend_type": backend_type,
             "user_email": file_status.get("user_email"),
-            "cooldown_status": cooldown_status,
-            "cooldown_remaining_seconds": cooldown_remaining_seconds,
+            "model_cooldowns": file_status.get("model_cooldowns", {}),
         }
-
-        if cooldown_until:
-            result["cooldown_until"] = cooldown_until
 
         if backend_type == "file" and os.path.exists(filename):
             result.update({
@@ -1626,7 +1579,7 @@ async def get_antigravity_creds_status(
 
     Args:
         offset: 跳过的记录数（默认0）
-        limit: 每页返回的记录数（默认50，可选：20, 50, 100）
+        limit: 每页返回的记录数（默认50，可选：20, 50, 100, 200, 500, 1000）
         status_filter: 状态筛选（all=全部, enabled=仅启用, disabled=仅禁用）
 
     Returns:

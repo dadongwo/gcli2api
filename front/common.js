@@ -61,14 +61,14 @@ function createCredsManager(type) {
         // API端点
         getEndpoint: (action) => {
             const endpoints = {
-                status: `${apiPrefix}/creds/status`,
-                action: `${apiPrefix}/creds/action`,
-                batchAction: `${apiPrefix}/creds/batch-action`,
-                download: `${apiPrefix}/creds/download`,
-                downloadAll: `${apiPrefix}/creds/download-all`,
-                detail: `${apiPrefix}/creds/detail`,
-                fetchEmail: `${apiPrefix}/creds/fetch-email`,
-                refreshAllEmails: `${apiPrefix}/creds/refresh-all-emails`
+                status: `.${apiPrefix}/creds/status`,
+                action: `.${apiPrefix}/creds/action`,
+                batchAction: `.${apiPrefix}/creds/batch-action`,
+                download: `.${apiPrefix}/creds/download`,
+                downloadAll: `.${apiPrefix}/creds/download-all`,
+                detail: `.${apiPrefix}/creds/detail`,
+                fetchEmail: `.${apiPrefix}/creds/fetch-email`,
+                refreshAllEmails: `.${apiPrefix}/creds/refresh-all-emails`
             };
             return endpoints[action] || '';
         },
@@ -111,9 +111,6 @@ function createCredsManager(type) {
                                 last_success: item.last_success,
                             },
                             user_email: item.user_email,
-                            cooldown_status: item.cooldown_status,
-                            cooldown_remaining_seconds: item.cooldown_remaining_seconds,
-                            cooldown_until: item.cooldown_until,
                             model_cooldowns: item.model_cooldowns || {}
                         };
                     });
@@ -325,7 +322,7 @@ function createCredsManager(type) {
 // =====================================================================
 function createUploadManager(type) {
     const isAntigravity = type === 'antigravity';
-    const endpoint = isAntigravity ? '/antigravity/upload' : '/auth/upload';
+    const endpoint = isAntigravity ? './antigravity/upload' : './auth/upload';
 
     return {
         type: type,
@@ -538,13 +535,6 @@ function createCredCard(credInfo, manager) {
         statusBadges += '<span class="status-badge" style="background-color: #28a745; color: white;">无错误</span>';
     }
 
-    // 全局冷却状态
-    if (credInfo.cooldown_status === 'cooling' && credInfo.cooldown_remaining_seconds) {
-        const timeDisplay = formatCooldownTime(credInfo.cooldown_remaining_seconds);
-        const cooldownTime = new Date(credInfo.cooldown_until * 1000).toLocaleString('zh-CN');
-        statusBadges += `<span class="cooldown-badge" title="冷却截止时间: ${cooldownTime}">🕐 全局冷却: ${timeDisplay}</span>`;
-    }
-
     // 模型级冷却状态
     if (credInfo.model_cooldowns && Object.keys(credInfo.model_cooldowns).length > 0) {
         const currentTime = Date.now() / 1000;
@@ -657,8 +647,8 @@ async function toggleCredDetailsCommon(pathId, manager) {
 
             try {
                 const endpoint = manager.type === 'antigravity'
-                    ? `/antigravity/creds/download/${encodeURIComponent(filename)}`
-                    : `/creds/detail/${encodeURIComponent(filename)}`;
+                    ? `./antigravity/creds/download/${encodeURIComponent(filename)}`
+                    : `./creds/detail/${encodeURIComponent(filename)}`;
 
                 const response = await fetch(endpoint, { headers: getAuthHeaders() });
 
@@ -698,7 +688,7 @@ async function login() {
     }
 
     try {
-        const response = await fetch('/auth/login', {
+        const response = await fetch('./auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password })
@@ -727,7 +717,7 @@ async function autoLogin() {
     AppState.authToken = savedToken;
 
     try {
-        const response = await fetch('/config/get', {
+        const response = await fetch('./config/get', {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${AppState.authToken}`
@@ -909,7 +899,7 @@ async function startAntigravityAuth() {
     try {
         showStatus('正在生成 Antigravity 认证链接...', 'info');
 
-        const response = await fetch('/auth/start', {
+        const response = await fetch('./auth/start', {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ use_antigravity: true })
@@ -951,7 +941,7 @@ async function getAntigravityCredentials() {
     try {
         showStatus('正在等待 Antigravity OAuth回调...', 'info');
 
-        const response = await fetch('/auth/callback', {
+        const response = await fetch('./auth/callback', {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ use_antigravity: true })
@@ -1082,7 +1072,6 @@ async function processCallbackUrl() {
         }
 
         document.getElementById('callbackUrlInput').value = '';
-        setTimeout(() => { if (typeof refreshCredsStatus === 'function') refreshCredsStatus(); }, 1000);
     } catch (error) {
         showStatus(`从回调URL获取凭证失败: ${error.message}`, 'error');
     }
@@ -1109,7 +1098,7 @@ async function processAntigravityCallbackUrl() {
     showStatus('正在从回调URL获取 Antigravity 凭证...', 'info');
 
     try {
-        const response = await fetch('/auth/callback-url', {
+        const response = await fetch('./auth/callback-url', {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ callback_url: callbackUrl, use_antigravity: true })
@@ -1126,7 +1115,6 @@ async function processAntigravityCallbackUrl() {
         }
 
         document.getElementById('antigravityCallbackUrlInput').value = '';
-        setTimeout(() => AppState.antigravityCreds.refresh(), 1000);
     } catch (error) {
         showStatus(`从回调URL获取 Antigravity 凭证失败: ${error.message}`, 'error');
     }
@@ -1162,7 +1150,7 @@ function toggleSelectAll() {
 }
 function batchAction(action) { AppState.creds.batchAction(action); }
 function downloadCred(filename) {
-    fetch(`/creds/download/${filename}`, { headers: { 'Authorization': `Bearer ${AppState.authToken}` } })
+    fetch(`./creds/download/${filename}`, { headers: { 'Authorization': `Bearer ${AppState.authToken}` } })
         .then(r => r.ok ? r.blob() : Promise.reject())
         .then(blob => {
             const url = window.URL.createObjectURL(blob);
@@ -1177,7 +1165,7 @@ function downloadCred(filename) {
 }
 async function downloadAllCreds() {
     try {
-        const response = await fetch('/creds/download-all', {
+        const response = await fetch('./creds/download-all', {
             headers: { 'Authorization': `Bearer ${AppState.authToken}` }
         });
         if (response.ok) {
@@ -1222,7 +1210,7 @@ function toggleSelectAllAntigravity() {
 }
 function batchAntigravityAction(action) { AppState.antigravityCreds.batchAction(action); }
 function downloadAntigravityCred(filename) {
-    fetch(`/antigravity/creds/download/${filename}`, { headers: getAuthHeaders() })
+    fetch(`./antigravity/creds/download/${filename}`, { headers: getAuthHeaders() })
         .then(r => r.ok ? r.blob() : Promise.reject())
         .then(blob => {
             const url = window.URL.createObjectURL(blob);
@@ -1242,7 +1230,7 @@ function deleteAntigravityCred(filename) {
 }
 async function downloadAllAntigravityCreds() {
     try {
-        const response = await fetch('/antigravity/creds/download-all', { headers: getAuthHeaders() });
+        const response = await fetch('./antigravity/creds/download-all', { headers: getAuthHeaders() });
         if (response.ok) {
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
@@ -1279,7 +1267,7 @@ function uploadAntigravityFiles() { AppState.antigravityUploadFiles.upload(); }
 async function fetchUserEmail(filename) {
     try {
         showStatus('正在获取用户邮箱...', 'info');
-        const response = await fetch(`/creds/fetch-email/${encodeURIComponent(filename)}`, {
+        const response = await fetch(`./creds/fetch-email/${encodeURIComponent(filename)}`, {
             method: 'POST',
             headers: getAuthHeaders()
         });
@@ -1298,7 +1286,7 @@ async function fetchUserEmail(filename) {
 async function fetchAntigravityUserEmail(filename) {
     try {
         showStatus('正在获取用户邮箱...', 'info');
-        const response = await fetch(`/antigravity/creds/fetch-email/${encodeURIComponent(filename)}`, {
+        const response = await fetch(`./antigravity/creds/fetch-email/${encodeURIComponent(filename)}`, {
             method: 'POST',
             headers: getAuthHeaders()
         });
@@ -1319,7 +1307,7 @@ async function refreshAllEmails() {
 
     try {
         showStatus('正在刷新所有用户邮箱...', 'info');
-        const response = await fetch('/creds/refresh-all-emails', {
+        const response = await fetch('./creds/refresh-all-emails', {
             method: 'POST',
             headers: getAuthHeaders()
         });
@@ -1340,7 +1328,7 @@ async function refreshAllAntigravityEmails() {
 
     try {
         showStatus('正在刷新所有用户邮箱...', 'info');
-        const response = await fetch('/antigravity/creds/refresh-all-emails', {
+        const response = await fetch('./antigravity/creds/refresh-all-emails', {
             method: 'POST',
             headers: getAuthHeaders()
         });
@@ -1366,8 +1354,8 @@ function connectWebSocket() {
     }
 
     try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/auth/logs/stream`;
+        const wsPath = new URL('./auth/logs/stream', window.location.href).href;
+        const wsUrl = wsPath.replace(/^http/, 'ws');
 
         document.getElementById('connectionStatusText').textContent = '连接中...';
         document.getElementById('logConnectionStatus').className = 'status info';
@@ -1432,7 +1420,7 @@ function clearLogsDisplay() {
 
 async function downloadLogs() {
     try {
-        const response = await fetch('/auth/logs/download', { headers: getAuthHeaders() });
+        const response = await fetch('./auth/logs/download', { headers: getAuthHeaders() });
 
         if (response.ok) {
             const contentDisposition = response.headers.get('Content-Disposition');
@@ -1462,7 +1450,7 @@ async function downloadLogs() {
 
 async function clearLogs() {
     try {
-        const response = await fetch('/auth/logs/clear', {
+        const response = await fetch('./auth/logs/clear', {
             method: 'POST',
             headers: getAuthHeaders()
         });
@@ -1515,7 +1503,7 @@ async function checkEnvCredsStatus() {
         loading.style.display = 'block';
         content.classList.add('hidden');
 
-        const response = await fetch('/auth/env-creds-status', { headers: getAuthHeaders() });
+        const response = await fetch('./auth/env-creds-status', { headers: getAuthHeaders() });
         const data = await response.json();
 
         if (response.ok) {
@@ -1610,7 +1598,7 @@ async function loadConfig() {
         loading.style.display = 'block';
         form.classList.add('hidden');
 
-        const response = await fetch('/config/get', { headers: getAuthHeaders() });
+        const response = await fetch('./config/get', { headers: getAuthHeaders() });
         const data = await response.json();
 
         if (response.ok) {
@@ -1791,8 +1779,8 @@ async function refreshUsageStats() {
         list.innerHTML = '';
 
         const [statsResponse, aggregatedResponse] = await Promise.all([
-            fetch('/usage/stats', { headers: getAuthHeaders() }),
-            fetch('/usage/aggregated', { headers: getAuthHeaders() })
+            fetch('./usage/stats', { headers: getAuthHeaders() }),
+            fetch('./usage/aggregated', { headers: getAuthHeaders() })
         ]);
 
         if (statsResponse.status === 401 || aggregatedResponse.status === 401) {
@@ -1929,18 +1917,15 @@ function stopCooldownTimer() {
 function updateCooldownDisplays() {
     let needsRefresh = false;
 
+    // 检查模型级冷却是否过期
     for (const credInfo of Object.values(AppState.creds.data)) {
-        if (credInfo.cooldown_status === 'cooling' && credInfo.cooldown_until) {
+        if (credInfo.model_cooldowns && Object.keys(credInfo.model_cooldowns).length > 0) {
             const currentTime = Date.now() / 1000;
-            const remainingSeconds = Math.max(0, Math.floor(credInfo.cooldown_until - currentTime));
+            const hasExpiredCooldowns = Object.entries(credInfo.model_cooldowns).some(([, until]) => until <= currentTime);
 
-            credInfo.cooldown_remaining_seconds = remainingSeconds;
-
-            if (remainingSeconds <= 0) {
-                credInfo.cooldown_status = 'ready';
-                credInfo.cooldown_until = null;
-                credInfo.cooldown_remaining_seconds = 0;
+            if (hasExpiredCooldowns) {
                 needsRefresh = true;
+                break;
             }
         }
     }
@@ -1950,6 +1935,7 @@ function updateCooldownDisplays() {
         return;
     }
 
+    // 更新模型级冷却的显示
     document.querySelectorAll('.cooldown-badge').forEach(badge => {
         const card = badge.closest('.cred-card');
         const filenameEl = card?.querySelector('.cred-filename');
@@ -1958,10 +1944,21 @@ function updateCooldownDisplays() {
         const filename = filenameEl.textContent;
         const credInfo = Object.values(AppState.creds.data).find(c => c.filename === filename);
 
-        if (credInfo && credInfo.cooldown_status === 'cooling') {
-            const remaining = credInfo.cooldown_remaining_seconds || 0;
-            if (remaining > 0) {
-                badge.innerHTML = `🕐 冷却中: ${formatCooldownTime(remaining)}`;
+        if (credInfo && credInfo.model_cooldowns) {
+            const currentTime = Date.now() / 1000;
+            const titleMatch = badge.getAttribute('title')?.match(/模型: (.+)/);
+            if (titleMatch) {
+                const model = titleMatch[1];
+                const cooldownUntil = credInfo.model_cooldowns[model];
+                if (cooldownUntil) {
+                    const remaining = Math.max(0, Math.floor(cooldownUntil - currentTime));
+                    if (remaining > 0) {
+                        const shortModel = model.replace('gemini-', '').replace('-exp', '')
+                            .replace('2.0-', '2-').replace('1.5-', '1.5-');
+                        const timeDisplay = formatCooldownTime(remaining).replace(/s$/, '').replace(/ /g, '');
+                        badge.innerHTML = `🔧 ${shortModel}: ${timeDisplay}`;
+                    }
+                }
             }
         }
     });
